@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Maps Scraper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+
+    <div class="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl">Google Maps Scraper</h1>
+            <p class="mt-3 text-lg text-gray-500">Extract business listings effortlessly. Enter a Google Maps URL below to start.</p>
+        </div>
+
+        <div class="bg-white shadow rounded-lg p-8">
+            <form id="scrape-form" class="space-y-6">
+                <div>
+                    <label for="url" class="block text-sm font-medium text-gray-700">Google Maps Search URL</label>
+                    <div class="mt-1">
+                        <input type="url" name="url" id="url" required class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md p-3 border" placeholder="https://www.google.com/maps/search/coffee+shops+in+new+york...">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                    <div>
+                        <label for="max" class="block text-sm font-medium text-gray-700">Max Results (1-200)</label>
+                        <div class="mt-1">
+                            <input type="number" name="max" id="max" value="20" min="1" max="200" class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md p-3 border">
+                        </div>
+                    </div>
+                    <div class="flex items-center mt-8">
+                        <input id="emails" name="emails" type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        <label for="emails" class="ml-2 block text-sm text-gray-900">
+                            Extract Emails (Slower)
+                            <span class="block text-xs text-gray-500">Visits each website to find contact emails.</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <button type="submit" id="submit-btn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        Start Scraping
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Status Card -->
+        <div id="status-card" class="mt-8 bg-white shadow rounded-lg p-8 hidden">
+            <div class="flex items-center space-x-4 mb-4">
+                <div id="loader" class="loader"></div>
+                <h3 id="status-text" class="text-lg leading-6 font-medium text-gray-900">Initializing...</h3>
+            </div>
+            
+            <div id="error-container" class="hidden rounded-md bg-red-50 p-4 mb-4">
+                <div class="flex">
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800" id="error-text"></h3>
+                    </div>
+                </div>
+            </div>
+
+            <div id="download-container" class="hidden mt-6 border-t border-gray-200 pt-6">
+                <h4 class="text-sm font-medium text-gray-900 mb-4">Scrape Complete! Download Results:</h4>
+                <div class="flex space-x-4">
+                    <button onclick="downloadResults('csv')" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Download CSV
+                    </button>
+                    <button onclick="downloadResults('xlsx')" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Download Excel
+                    </button>
+                    <button onclick="downloadResults('json')" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Download JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentJobId = null;
+        let finalResults = null;
+        let pollInterval = null;
+
+        document.getElementById('scrape-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('url').value;
+            const max = parseInt(document.getElementById('max').value);
+            const emails = document.getElementById('emails').checked;
+            
+            const submitBtn = document.getElementById('submit-btn');
+            const statusCard = document.getElementById('status-card');
+            const statusText = document.getElementById('status-text');
+            const loader = document.getElementById('loader');
+            const errorContainer = document.getElementById('error-container');
+            const downloadContainer = document.getElementById('download-container');
+
+            // Reset UI
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            statusCard.classList.remove('hidden');
+            errorContainer.classList.add('hidden');
+            downloadContainer.classList.add('hidden');
+            loader.style.display = 'block';
+            statusText.innerText = 'Initializing browser...';
+            finalResults = null;
+
+            try {
+                const response = await fetch('/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, max, emails })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to start scrape');
+                }
+
+                currentJobId = data.job_id;
+                statusText.innerText = 'Scraping in progress... This may take a few minutes.';
+                
+                // Start polling
+                pollInterval = setInterval(checkStatus, 3000);
+
+            } catch (err) {
+                showError(err.message);
+                resetBtn();
+            }
+        });
+
+        async function checkStatus() {
+            if (!currentJobId) return;
+
+            try {
+                const response = await fetch(`/status/${currentJobId}`);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.error || 'Failed to fetch status');
+
+                if (data.status === 'done') {
+                    clearInterval(pollInterval);
+                    finalResults = data.results;
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('status-text').innerText = `Success! Scraped ${finalResults.length} listings.`;
+                    document.getElementById('download-container').classList.remove('hidden');
+                    resetBtn();
+                } else if (data.status === 'error') {
+                    clearInterval(pollInterval);
+                    showError(data.error);
+                    resetBtn();
+                }
+
+            } catch (err) {
+                clearInterval(pollInterval);
+                showError("Lost connection to server while checking status.");
+                resetBtn();
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('status-text').innerText = 'Job Failed';
+            const errDiv = document.getElementById('error-container');
+            document.getElementById('error-text').innerText = msg;
+            errDiv.classList.remove('hidden');
+        }
+
+        function resetBtn() {
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        async function downloadResults(format) {
+            if (!finalResults) return;
+
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ results: finalResults, format: format })
+                });
+
+                if (!response.ok) throw new Error('Download failed');
+
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = `scraped_data.${format}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(downloadUrl);
+            } catch (err) {
+                alert("Error downloading file: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
