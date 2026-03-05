@@ -3,9 +3,10 @@ A powerful, asynchronous web scraper built with Python, Flask, and Playwright. E
 
 # Running with Docker (Easiest):
 If you have Docker installed, you can run the scraper immediately without any setup by pulling the pre-built image from Docker Hub:
-1. Pull and Run
-"docker run -p 8000:8000 shuklavartika010/google-maps-scraper:v1"
-2. Access the App
+1. Login to docker through the terminal.
+2. Pull and Run
+   "docker run --platform linux/amd64 -p 8000:8000 shuklavartika010/google-maps-scraper:v1"
+3. Access the App
    Visit http://localhost:8000 in your browser.
 
 # Quick Start (Local Development):
